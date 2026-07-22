@@ -3,48 +3,82 @@
 namespace App\Http\Controllers;
 
 use Carbon\Carbon;
-use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 
 class DashboardController extends Controller
 {
-    /**
-     * Display the dashboard.
-     */
-    public function index(): View
+    public function index(Request $request)
     {
-        $selectedMonth = Carbon::create(2026, 7, 1);
-        $expenses = collect([
-            ['id' => 1, 'date' => '2026-07-21', 'category' => 'Groceries', 'description' => 'Monthly grocery shopping', 'amount' => 6450],
-            ['id' => 2, 'date' => '2026-07-19', 'category' => 'Transport', 'description' => 'Fuel and toll charges', 'amount' => 3200],
-            ['id' => 3, 'date' => '2026-07-16', 'category' => 'Utilities', 'description' => 'Electricity bill', 'amount' => 2840],
-            ['id' => 4, 'date' => '2026-07-12', 'category' => 'Dining', 'description' => 'Family dinner', 'amount' => 1950],
-            ['id' => 5, 'date' => '2026-07-08', 'category' => 'Healthcare', 'description' => 'Medicines and consultation', 'amount' => 2460],
-        ])->map(fn ($item) => (object) [
-            ...$item,
-            'expense_date' => Carbon::parse($item['date']),
-            'category' => (object) ['name' => $item['category']],
+        $request->validate([
+            'month' => ['nullable', 'date_format:Y-m'],
         ]);
+
+        $selectedMonth = $request->month
+            ? Carbon::createFromFormat('Y-m', $request->month)->startOfMonth()
+            : now()->startOfMonth();
+
+        $currentMonth = now()->startOfMonth();
+        $currentBudget = auth()->user()->budgets()
+            ->where('month', $currentMonth->month)
+            ->where('year', $currentMonth->year)
+            ->first();
+
+        if ($selectedMonth->format('Y-m') === $currentMonth->format('Y-m')) {
+            $budgetRecord = $currentBudget;
+        } else {
+            $budgetRecord = auth()->user()->budgets()
+                ->where('month', $selectedMonth->month)
+                ->where('year', $selectedMonth->year)
+                ->first();
+        }
+
+        $expenses = auth()->user()->expenses()
+            ->with('category')
+            ->whereYear('expense_date', $selectedMonth->year)
+            ->whereMonth('expense_date', $selectedMonth->month)
+            ->latest('expense_date')
+            ->get();
+
+        $budget = (float) ($budgetRecord->amount ?? 0);
+        $spent = (float) $expenses->sum('amount');
+
+        $categoryTotals = collect();
+        foreach ($expenses as $expense) {
+            $categoryName = $expense->category->name;
+            $categoryTotals[$categoryName] = ($categoryTotals[$categoryName] ?? 0) + (float) $expense->amount;
+        }
+
+        $trendStart = $selectedMonth->copy()->subMonths(5)->startOfMonth();
+        $trendExpenses = auth()->user()->expenses()
+            ->whereBetween('expense_date', [$trendStart, $selectedMonth->copy()->endOfMonth()])
+            ->get(['amount', 'expense_date']);
+
+        $trendTotals = [];
+        foreach ($trendExpenses as $expense) {
+            $key = $expense->expense_date->format('Y-n');
+            $trendTotals[$key] = ($trendTotals[$key] ?? 0) + (float) $expense->amount;
+        }
+
+        $trend = collect();
+        for ($i = 5; $i >= 0; $i--) {
+            $month = $selectedMonth->copy()->subMonths($i);
+            $key = $month->format('Y-n');
+
+            $trend->push([
+                'label' => $month->format('M'),
+                'total' => $trendTotals[$key] ?? 0,
+            ]);
+        }
 
         return view('dashboard', [
             'selectedMonth' => $selectedMonth,
-            'budget' => 65000,
-            'spent' => $expenses->sum('amount'),
+            'currentMonth' => $currentMonth,
+            'needsCurrentBudget' => ! $currentBudget,
+            'budget' => $budget,
+            'spent' => $spent,
             'expenses' => $expenses,
-            'categoryTotals' => collect([
-                'Groceries' => 14200,
-                'Transport' => 8900,
-                'Utilities' => 7800,
-                'Dining' => 6100,
-                'Healthcare' => 5350,
-            ]),
-            'trend' => collect([
-                ['label' => 'Feb', 'total' => 44680],
-                ['label' => 'Mar', 'total' => 51900],
-                ['label' => 'Apr', 'total' => 49250],
-                ['label' => 'May', 'total' => 61400],
-                ['label' => 'Jun', 'total' => 56780],
-                ['label' => 'Jul', 'total' => 42350],
-            ]),
+            'categoryTotals' => $categoryTotals,
+            'trend' => $trend,
         ]);
     }
 }

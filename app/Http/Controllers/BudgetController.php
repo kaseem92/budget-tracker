@@ -2,39 +2,103 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Contracts\View\View;
+use Carbon\Carbon;
+use Illuminate\Http\Request;
 
 class BudgetController extends Controller
 {
-    /**
-     * Display the budgets.
-     */
-    public function index(): View
+    public function index()
     {
-        $budgets = collect([
-            [1, 7, 2026, 65000],
-            [2, 6, 2026, 60000],
-            [3, 5, 2026, 58000],
-            [4, 4, 2026, 60000],
-            [5, 3, 2026, 55000],
-            [6, 2, 2026, 55000],
-        ])->map(fn ($item) => (object) [
-            'id' => $item[0],
-            'month' => $item[1],
-            'year' => $item[2],
-            'amount' => $item[3],
+        $budgets = auth()->user()->budgets()
+            ->latest('year')
+            ->latest('month')
+            ->paginate(10);
+
+        $expenseTotals = collect();
+        $budgetItems = $budgets->getCollection();
+
+        if ($budgetItems->isNotEmpty()) {
+            $latestBudget = $budgetItems->first();
+            $oldestBudget = $budgetItems->last();
+            $startDate = Carbon::create($oldestBudget->year, $oldestBudget->month)->startOfMonth();
+            $endDate = Carbon::create($latestBudget->year, $latestBudget->month)->endOfMonth();
+
+            $expenses = auth()->user()->expenses()
+                ->whereBetween('expense_date', [$startDate, $endDate])
+                ->get(['amount', 'expense_date']);
+
+            foreach ($expenses as $expense) {
+                $key = $expense->expense_date->format('Y-n');
+                $expenseTotals[$key] = ($expenseTotals[$key] ?? 0) + (float) $expense->amount;
+            }
+        }
+
+        return view('budgets.index', compact('budgets', 'expenseTotals'));
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'month' => ['required', 'integer', 'between:1,12'],
+            'year' => ['required', 'integer', 'between:2000,2100'],
+            'amount' => ['required', 'numeric', 'min:1', 'max:9999999999.99'],
         ]);
 
-        return view('budgets.index', [
-            'budgets' => $budgets,
-            'expenseTotals' => collect([
-                '2026-7' => 42350,
-                '2026-6' => 56780,
-                '2026-5' => 61400,
-                '2026-4' => 49250,
-                '2026-3' => 51900,
-                '2026-2' => 44680,
-            ]),
+        $exists = auth()->user()->budgets()
+            ->where('month', $data['month'])
+            ->where('year', $data['year'])
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'message' => 'A budget already exists for the selected month.',
+            ], 422);
+        }
+
+        $budget = auth()->user()->budgets()->create($data);
+
+        return response()->json([
+            'message' => 'Budget created successfully.',
+            'budget' => $budget,
+        ], 201);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $budget = auth()->user()->budgets()->findOrFail($id);
+
+        $data = $request->validate([
+            'month' => ['required', 'integer', 'between:1,12'],
+            'year' => ['required', 'integer', 'between:2000,2100'],
+            'amount' => ['required', 'numeric', 'min:1', 'max:9999999999.99'],
+        ]);
+
+        $exists = auth()->user()->budgets()
+            ->where('month', $data['month'])
+            ->where('year', $data['year'])
+            ->where('id', '!=', $budget->id)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'message' => 'A budget already exists for the selected month.',
+            ], 422);
+        }
+
+        $budget->update($data);
+
+        return response()->json([
+            'message' => 'Budget updated successfully.',
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $budget = auth()->user()->budgets()->findOrFail($id);
+        $budget->delete();
+
+        return response()->json([
+            'message' => 'Budget deleted successfully.',
         ]);
     }
 }

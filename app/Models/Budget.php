@@ -2,20 +2,17 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'month', 'year', 'amount'])]
 class Budget extends Model
 {
+    protected $fillable = ['user_id', 'month', 'year', 'amount'];
 
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    
     protected function casts()
     {
         return [

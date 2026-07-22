@@ -2,29 +2,67 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    /**
-     * Display the categories.
-     */
-    public function index(): View
+    public function index()
     {
-        $categories = collect([
-            [1, 'Groceries', 6, true],
-            [2, 'Transport', 4, true],
-            [3, 'Utilities', 3, true],
-            [4, 'Dining', 3, true],
-            [5, 'Healthcare', 2, true],
-            [6, 'Travel', 0, false],
-        ])->map(fn ($item) => (object) [
-            'id' => $item[0],
-            'name' => $item[1],
-            'expenses_count' => $item[2],
-            'is_active' => $item[3],
-        ]);
+        $categories = auth()->user()->categories()
+            ->withCount('expenses')
+            ->latest()
+            ->paginate(10);
 
         return view('categories.index', compact('categories'));
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'status' => ['required', 'boolean'],
+        ]);
+
+        $category = auth()->user()->categories()->create($data);
+
+        return response()->json([
+            'message' => 'Category created successfully.',
+            'category' => $category,
+        ], 201);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $category = auth()->user()->categories()->findOrFail($id);
+
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'color' => ['nullable', 'regex:/^#[0-9A-Fa-f]{6}$/'],
+            'status' => ['required', 'boolean'],
+        ]);
+
+        $category->update($data);
+
+        return response()->json([
+            'message' => 'Category updated successfully.',
+        ]);
+    }
+
+    public function destroy($id)
+    {
+        $category = auth()->user()->categories()->findOrFail($id);
+
+        if ($category->expenses()->exists()) {
+            return response()->json([
+                'message' => 'This category cannot be deleted because it has expenses.',
+            ], 422);
+        }
+
+        $category->delete();
+
+        return response()->json([
+            'message' => 'Category deleted successfully.',
+        ]);
     }
 }
