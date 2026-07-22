@@ -1,0 +1,15 @@
+@extends('layouts.app')
+@section('title', 'Budgets')
+@section('content')
+<div class="page-header"><div><h1>Monthly Budgets</h1><p>Plan spending limits and monitor performance by month.</p></div><button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addBudgetModal"><i class="bi bi-plus-lg me-1"></i>Add Budget</button></div>
+<div class="card"><div class="card-body"><div class="section-heading"><div><h5 class="card-title">Budget Records</h5><p class="card-subtitle">{{ $budgets->count() }} monthly budget records</p></div></div><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Month</th><th>Year</th><th>Budget</th><th>Expense</th><th>Remaining</th><th>Status</th><th class="text-end">Action</th></tr></thead><tbody>
+@foreach($budgets as $budget)
+@php $expense = $expenseTotals->get($budget->year.'-'.$budget->month, 0); $remaining = $budget->amount - $expense; $ratio = $expense / $budget->amount; @endphp
+<tr><td class="fw-semibold">{{ DateTime::createFromFormat('!m', $budget->month)->format('F') }}</td><td>{{ $budget->year }}</td><td>₹{{ number_format($budget->amount, 2) }}</td><td>₹{{ number_format($expense, 2) }}</td><td class="fw-semibold {{ $remaining < 0 ? 'text-danger' : 'text-success' }}">₹{{ number_format($remaining, 2) }}</td><td><span class="status-badge {{ $ratio > 1 ? 'danger' : ($ratio >= .85 ? 'warning' : 'success') }}">{{ $ratio > 1 ? 'Exceeded' : ($ratio >= .85 ? 'Near Limit' : 'On Track') }}</span></td><td><div class="table-actions"><button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#editBudget{{ $budget->id }}"><i class="bi bi-pencil"></i></button><button class="btn btn-light btn-sm text-danger demo-action"><i class="bi bi-trash"></i></button></div></td></tr>
+@endforeach
+</tbody></table></div></div></div>
+@endsection
+@push('modals')
+<div class="modal fade" id="addBudgetModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form class="demo-form"><div class="modal-header"><div><h5 class="modal-title">Add Monthly Budget</h5><small class="text-muted">Set a spending limit for a month.</small></div><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">@include('budgets.form-modal', ['budget' => null])</div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Save Budget</button></div></form></div></div></div>
+@foreach($budgets as $budget)<div class="modal fade" id="editBudget{{ $budget->id }}" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form class="demo-form"><div class="modal-header"><h5 class="modal-title">Edit Budget</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">@include('budgets.form-modal', ['budget' => $budget])</div><div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Update Budget</button></div></form></div></div></div>@endforeach
+@endpush
