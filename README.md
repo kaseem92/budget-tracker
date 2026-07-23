@@ -108,7 +108,7 @@ Password: 123456
 - jQuery Validation Plugin
 - ApexCharts
 - SweetAlert2
-- MySQL / SQLite
+- MySQL
 
 ---
 
